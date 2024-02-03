@@ -23,13 +23,16 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
     and if a majority vote is obtained, the proposal will be executed.
 */
 
-
-
 contract GovTok is ERC20 {
-    
     address public admin;
 
     struct Proposal {
+        /*
+        Defines the structure of a proposal in the company.
+        Consists of the address of the proposer, a description of the proposal.
+        The forVotes and againstVotes stores the weightage of the positive and negative votes,
+        and the executed variable holds if the Proposal is already executed or if voting is still active.
+        */
         address proposer;
         string description;
         uint256 forVotes;
@@ -40,6 +43,9 @@ contract GovTok is ERC20 {
     uint256 public proposalCount;
 
     mapping(uint256 => Proposal) public proposals;
+    mapping(uint256 => mapping(address => bool)) public hasVoted;
+
+    //Maps id to each proposal for easy access.
 
     modifier onlyAdmin() {
         require(msg.sender == admin, "Not authorized");
@@ -51,10 +57,14 @@ contract GovTok is ERC20 {
         address indexed proposer,
         string description
     );
-    event Voted(uint256 indexed id, address indexed voter, bool inSupport);
-    event ProposalExecuted(uint256 indexed id);
+
+    //Event to log Proposal Creation
+
+    event Voted(uint256 indexed id, address indexed voter, bool inSupport); //Event to Log Votes
+    event ProposalExecuted(uint256 indexed id); //Event to log Execution of Proposals
 
     constructor(uint256 initialSupply) ERC20("GovTok", "GVT") {
+        //Admin decides how many coins to mint.
         admin = msg.sender;
         _mint(msg.sender, initialSupply);
     }
@@ -62,6 +72,7 @@ contract GovTok is ERC20 {
     function createProposal(
         string memory _description
     ) external returns (uint256) {
+        //Creates a Proposal
         proposalCount++;
         proposals[proposalCount] = Proposal({
             proposer: msg.sender,
@@ -75,39 +86,69 @@ contract GovTok is ERC20 {
     }
 
     function vote(uint256 _id, bool _inSupport) external {
+        //Allows user to vote, where the weightage of the votes depend on the number of coins they are holding.
         Proposal storage proposal = proposals[_id];
-        require(proposal.executed==false,"Proposal already executed!");
-        require(balanceOf(msg.sender)!=1,"Insufficient Balance to Vote");
+        require(proposal.executed == false, "Proposal already executed!");
+        require(balanceOf(msg.sender) > 0, "Insufficient Balance to Vote");
+        require(
+            !hasVoted[_id][msg.sender],
+            "User has already voted on this proposal"
+        );
 
-        if(_inSupport)
-        {
-            proposal.forVotes+=balanceOf(msg.sender);
+        if (_inSupport) {
+            proposal.forVotes += balanceOf(msg.sender);
+        } else {
+            proposal.againstVotes += balanceOf(msg.sender);
         }
-        else {
-            proposal.againstVotes+=balanceOf(msg.sender);
-        }
+        hasVoted[_id][msg.sender] = true; // Mark the user as voted
+        emit Voted(_id, msg.sender, _inSupport);
     }
 
-    function executeProposal(uint256 _id) external onlyAdmin
-    {
-        Proposal storage proposal=proposals[_id];
-        require(proposal.executed==false,"Proposal already executed!");
+    function executeProposal(uint256 _id) external onlyAdmin {
+        //Gives the admin power to execute a proposal based on the votes.
 
-        if(proposal.forVotes>proposal.againstVotes)
-        {
-            proposal.executed=true;
+        Proposal storage proposal = proposals[_id];
+        require(proposal.executed == false, "Proposal already executed!");
+
+        if (proposal.forVotes > proposal.againstVotes) {
+            proposal.executed = true;
             emit ProposalExecuted(_id);
         }
     }
 
-    function purchaseCoins() public payable
-    {
-        require(msg.value>0,"Insufficient ETH Sent");
+    function purchaseCoins() public payable {
+        //Allows users to purchase tokens for Ethereum
+
+        require(msg.value > 0, "Insufficient ETH Sent");
 
         //Assuming 1 ETH= 100 GVT
 
-        uint256 gvtAmount=msg.value*100;
-        transfer(address(this),msg.sender,gvtAmount);
+        uint256 gvtAmount = msg.value * 100;
+        transferFrom(address(this), msg.sender, gvtAmount);
+    }
 
+    function getAllProposals() external view returns (Proposal[] memory) {
+        Proposal[] memory allProposals = new Proposal[](proposalCount);
+
+        for (uint256 i = 1; i <= proposalCount; i++) {
+            allProposals[i - 1] = proposals[i];
+        }
+
+        return allProposals;
+    }
+
+    function getProposalStatus(
+        uint256 _id
+    ) external view returns (address, string memory, uint256, uint256, bool) {
+        require(_id <= proposalCount && _id > 0, "Invalid proposal ID");
+
+        Proposal memory proposal = proposals[_id];
+        return (
+            proposal.proposer,
+            proposal.description,
+            proposal.forVotes,
+            proposal.againstVotes,
+            proposal.executed
+        );
     }
 }
