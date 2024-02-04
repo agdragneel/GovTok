@@ -24,7 +24,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 */
 
 contract GovTok is ERC20 {
-    address public admin;
+    address internal admin;
 
     struct Proposal {
         /*
@@ -38,6 +38,7 @@ contract GovTok is ERC20 {
         uint256 forVotes;
         uint256 againstVotes;
         bool executed;
+        bool approved;
     }
 
     uint256 public proposalCount;
@@ -79,7 +80,8 @@ contract GovTok is ERC20 {
             description: _description,
             forVotes: 0,
             againstVotes: 0,
-            executed: false
+            executed: false,
+            approved: false
         });
         emit ProposalCreated(proposalCount, msg.sender, _description);
         return proposalCount;
@@ -111,9 +113,10 @@ contract GovTok is ERC20 {
         require(proposal.executed == false, "Proposal already executed!");
 
         if (proposal.forVotes > proposal.againstVotes) {
-            proposal.executed = true;
+            proposal.approved = true;
             emit ProposalExecuted(_id);
         }
+        proposal.executed=true;
     }
 
     function purchaseCoins() public payable {
@@ -124,7 +127,8 @@ contract GovTok is ERC20 {
         //Assuming 1 ETH= 100 GVT
 
         uint256 gvtAmount = msg.value * 100;
-        transferFrom(address(this), msg.sender, gvtAmount);
+        _mint(msg.sender,gvtAmount);
+        _burn(admin,gvtAmount);
     }
 
     function getAllProposals() external view returns (Proposal[] memory) {
@@ -139,7 +143,7 @@ contract GovTok is ERC20 {
 
     function getProposalStatus(
         uint256 _id
-    ) external view returns (address, string memory, uint256, uint256, bool) {
+    ) external view returns (address, string memory, uint256, uint256, bool,bool) {
         require(_id <= proposalCount && _id > 0, "Invalid proposal ID");
 
         Proposal memory proposal = proposals[_id];
@@ -148,7 +152,13 @@ contract GovTok is ERC20 {
             proposal.description,
             proposal.forVotes,
             proposal.againstVotes,
-            proposal.executed
+            proposal.executed,
+            proposal.approved
         );
+    }
+
+    function myBalance() public view returns(uint256)
+    {
+        return balanceOf(msg.sender);
     }
 }
